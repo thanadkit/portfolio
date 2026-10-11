@@ -21,10 +21,7 @@ const PROP_PENDING = 'DEPLOY_PENDING_AT';
 const QUIET_MINUTES = 5;    // หยุดแก้นานเท่านี้ถึงจะ deploy
 
 function setDeployHook() {
-  const url = 'https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/XXXXXXXX';  // <-- แก้ตรงนี้
-  if (url.indexOf('XXXX') !== -1) {
-    throw new Error('ยังไม่ได้ใส่ Deploy Hook URL จริง');
-  }
+  const url = 'https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/b839d9f7-fa18-4dc8-ac20-b3eb85ef39e8';
   PropertiesService.getScriptProperties().setProperty(PROP_HOOK, url);
   Logger.log('เก็บ Deploy Hook เรียบร้อย');
 }
