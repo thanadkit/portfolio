@@ -3,3 +3,4 @@ data/
 dist/
 .DS_Store
 node_modules/
+DEPLOY_HOOK.local.txt
