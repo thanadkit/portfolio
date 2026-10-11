@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="th" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- nginx ใน Docker จะแก้ค่านี้เป็น "on" อัตโนมัติ (sub_filter) เพื่อบอกหน้าเว็บให้ใช้แคชรูปฝั่ง server
+         เปิดไฟล์ตรง ๆ หรือรันบน Netlify ค่าจะเป็น "off" แล้วยิงตรงไป Google CDN แทน -->
+    <meta name="img-proxy" content="off">
+
+    <!-- updater จะแทน marker นี้ด้วย og:/twitter:/JSON-LD ที่สร้างจากข้อมูลจริง
+         crawler ของ LINE/Facebook ไม่รัน JS จึงต้องฝังไว้ใน HTML ตั้งแต่ต้น -->
+    <!--OG-->
+    <title>Thanadkit Limcharoen | Portfolio</title>
+
+    <!-- ไอคอนแท็บ: โมโนแกรม TL. สีทอง เข้าชุดกับ navbar -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="mask-icon" href="favicon.svg" color="#d4af37">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="apple-mobile-web-app-title" content="TL Portfolio">
+    <meta name="theme-color" content="#111111">
+    <!-- เปิด TCP/TLS ล่วงหน้ากับปลายทางที่ต้องคุยด้วยแน่ ๆ ประหยัด round-trip ได้หลายร้อย ms -->
+    <link rel="preconnect" href="https://script.google.com" crossorigin>
+    <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+    <link rel="preconnect" href="https://lh3.googleusercontent.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+
+    <script>
+        // ── ยิง API ตั้งแต่วินาทีแรกที่ browser parse มาถึงบรรทัดนี้ ──
+        // เดิมรออยู่ที่ window.onload คือต้องรอ Tailwind + particles + font + รูป โหลดครบก่อน
+
+        // nginx จะแก้ meta ด้านบนเป็น "on" ตอนเสิร์ฟ = เรารันอยู่หลัง proxy ที่มีแคช
+        var metaProxy = document.querySelector('meta[name="img-proxy"]');
+        window.IMG_PROXY_ON = !!metaProxy && metaProxy.content === 'on';
+
+        // Apps Script ตัวจริงตอบช้าราว 5 วินาที (วัดแล้ว) จึงให้ผ่าน /api/cv ที่ nginx แคชไว้แทนถ้ามี
+        const API_DIRECT = 'https://script.google.com/macros/s/AKfycbxRkAxv8L94X3m-02j2rAYz7xpDRHDWjMTmMapr-2H9fHdXBsm3B2b0WVzFeYuPRYhY/exec';
+        const API_URL    = window.IMG_PROXY_ON ? '/api/cv' : API_DIRECT;
+        const CACHE_KEY  = 'webcv-cache-v1';
+
+        // ข้อมูลรอบที่แล้วที่เก็บไว้ ใช้วาดหน้าทันทีตอน refresh (0 ms) แล้วค่อยอัปเดตทับเมื่อของสดมาถึง
+        window.cachedData = (function () {
+            try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch (e) { return null; }
+        })();
+
+        function fetchJson(url) {
+            return fetch(url).then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            });
+        }
+
+        window.dataPromise = fetchJson(API_URL)
+            .catch(function (err) {
+                // /api/cv พังก็ยังยิงตรงไป Apps Script ได้ หน้าเว็บไม่ตาย
+                if (API_URL === API_DIRECT) throw err;
+                console.warn('proxy api failed, falling back to direct:', err.message);
+                return fetchJson(API_DIRECT);
+            })
+            .then(function (d) {
+                try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch (e) {}
+                return d;
+            });
+        window.dataPromise.catch(function () {}); // กัน unhandled rejection ก่อนตัวรับจะมา attach
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- defer: เอฟเฟกต์ประกาย ไม่ใช่เนื้อหา ปล่อยให้โหลดทีหลังได้ ไม่ต้องบล็อกการวาดหน้า -->
+    <script defer src="https://cdn.jsdelivr.net/npm/tsparticles-slim@2.12.0/tsparticles.slim.bundle.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        gold: { DEFAULT: '#d4af37', light: '#fde047', dark: '#997a00' },
+                        surface: { 100: '#111111', 200: '#161616', 300: '#262626' }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Roboto Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { 
+            background-color: #111111; 
+            color: #a3a3a3; 
+            overflow-x: hidden;
+            letter-spacing: -0.01em;
+        }
+        
+        #mouse-spotlight {
+            pointer-events: none; position: fixed; inset: 0; z-index: 30;
+            transition: opacity 0.3s ease;
+            background: radial-gradient(600px circle at 0px 0px, rgba(212, 175, 55, 0.04), transparent 40%);
+            opacity: 0;
+        }
+
+        #tsparticles {
+            position: fixed; width: 100%; height: 100%; top: 0; left: 0; z-index: 0; pointer-events: none; 
+        }
+
+        #scroll-progress-container {
+            position: fixed; top: 0; left: 0; width: 2px; height: 100vh; background-color: rgba(255,255,255,0.05); z-index: 100;
+        }
+        #scroll-progress {
+            width: 100%; height: 0%; background: linear-gradient(to bottom, #fde047, #d4af37); box-shadow: 0 0 10px rgba(212,175,55,0.8); border-radius: 2px;
+        }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: all 1s cubic-bezier(0.16, 1, 0.3, 1); }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+
+        .loader-ring {
+            width: 30px; height: 30px; border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 50%; border-top-color: #d4af37; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .img-container { overflow: hidden; }
+        .img-container img { transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), filter 0.5s ease; }
+        .group:hover .img-container img { 
+            transform: scale(1.05); 
+            filter: grayscale(0) sepia(0) contrast(1) !important;
+            opacity: 1 !important;
+        }
+
+        .tab-btn {
+            position: relative; color: #737373; transition: color 0.3s ease; cursor: pointer;
+            /* พื้นที่แตะอย่างน้อย 44px ตามมาตรฐานนิ้วมือ เดิมสูงแค่ 28px กดพลาดง่ายบนมือถือ */
+            min-height: 44px; display: inline-flex; align-items: center;
+            padding: 0.75rem 0 0.5rem; -webkit-tap-highlight-color: rgba(212,175,55,.2);
+        }
+        .tab-btn:hover { color: #d4af37; }
+        .tab-btn.active { color: #ffffff; }
+        .tab-btn.active::after {
+            content: ''; position: absolute; left: 0; bottom: 0.5rem; width: 100%; height: 2px; background-color: #d4af37;
+        }
+        
+        .typing-cursor::after {
+            content: '|'; animation: blink 1s step-start infinite; color: #d4af37;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* ── LQIP: ภาพเบลอจิ๋วคั่นระหว่างรอรูปจริง ── */
+        .img-container { background-size: cover; background-position: center; }
+        .img-fade { opacity: 0; transition: opacity .45s ease; }
+        .img-fade.is-loaded { opacity: 1; }
+
+        /* ── Lightbox ── */
+        #lightbox {
+            position: fixed; inset: 0; z-index: 100;
+            background: rgba(8,8,8,.94);
+            backdrop-filter: blur(6px);
+            display: none; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity .25s ease;
+        }
+        #lightbox.open { display: flex; opacity: 1; }
+        #lightbox img {
+            /* เผื่อที่ให้ caption ด้านล่างเสมอ ใช้ vh ตายตัวแล้วจอแนวนอนเตี้ย ๆ จะทับกัน */
+            max-width: 92vw; max-height: calc(100vh - 140px);
+            border-radius: 18px;
+            box-shadow: 0 30px 90px rgba(0,0,0,.8), 0 0 0 1px rgba(212,175,55,.25);
+        }
+        .lb-btn {
+            position: absolute; background: rgba(255,255,255,.06);
+            border: 1px solid rgba(212,175,55,.35); color: #d4af37;
+            width: 46px; height: 46px; border-radius: 999px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all .2s ease; user-select: none;
+        }
+        .lb-btn:hover { background: rgba(212,175,55,.18); color: #fde047; }
+        #lb-prev { left: 22px; } #lb-next { right: 22px; } #lb-close { top: 22px; right: 22px; }
+        #lb-caption {
+            position: absolute; bottom: 26px; left: 0; right: 0; text-align: center;
+            color: #a3a3a3; font-size: 13px; letter-spacing: .08em;
+            text-transform: uppercase; padding: 0 24px;
+        }
+        #lb-caption b { color: #fff; font-weight: 600; text-transform: none; letter-spacing: 0; }
+
+        /* ── เมนูมือถือ ── */
+        #mobile-menu.open { display: flex; }
+        .mobile-link {
+            font-family: 'Roboto Mono', monospace; font-size: 15px;
+            text-transform: uppercase; letter-spacing: .18em; color: #d4d4d4;
+            padding: 16px 28px; border-radius: 999px; transition: all .2s ease;
+        }
+        .mobile-link:active, .mobile-link:hover { color: #d4af37; background: rgba(212,175,55,.08); }
+        #nav-toggle.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+        #nav-toggle.open span:nth-child(2) { opacity: 0; }
+        #nav-toggle.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+        /* ── Lightbox บนจอเล็ก: ปุ่มลูกศรเดิมทับตัวรูป ย้ายลงมาไว้ล่าง ── */
+        @media (max-width: 640px) {
+            /* มือถือ: ปุ่มลูกศรย้ายลงล่าง ต้องเผื่อที่ให้ทั้งลูกศรและ caption */
+            #lightbox img { max-width: 94vw; max-height: calc(100vh - 220px); }
+            #lb-prev, #lb-next {
+                top: auto; bottom: 22px; width: 52px; height: 52px;
+                background: rgba(255,255,255,.08);
+            }
+            #lb-prev { left: 26px; }
+            #lb-next { right: 26px; }
+            #lb-caption { bottom: 92px; font-size: 12px; }
+            #lb-close { top: 18px; right: 18px; }
+        }
+
+        /* จอเตี้ย เช่นมือถือแนวนอน */
+        @media (max-height: 520px) {
+            #lightbox img { max-height: calc(100vh - 100px); }
+            #lb-caption { bottom: 12px; font-size: 11px; }
+            #lb-prev, #lb-next, #lb-close { width: 38px; height: 38px; }
+            #lb-prev { left: 12px; bottom: auto; top: 50%; transform: translateY(-50%); }
+            #lb-next { right: 12px; bottom: auto; top: 50%; transform: translateY(-50%); }
+            #lb-close { top: 12px; right: 12px; }
+        }
+
+        /* ── โหมดพิมพ์ / บันทึกเป็น PDF : ธีมมืดทองเหมือนหน้าเว็บ ── */
+        @media print {
+            @page { size: A4; margin: 10mm 9mm; }
+
+            /* บังคับให้พิมพ์สีพื้นหลังจริง ไม่ให้เบราว์เซอร์ "ประหยัดหมึก" ทิ้งไป */
+            *, *::before, *::after {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            /* ตัดของที่ไม่มีความหมายบนกระดาษ */
+            nav, footer, #tsparticles, #mouse-spotlight, #scroll-progress-container,
+            #loading, #lightbox, #portfolio-tabs, .glow-blob, #print-cv, #print-hint,
+            #mobile-menu, #nav-toggle,
+            #dynamic-days-counter, #dynamic-days-label,
+            #timeline-container .absolute, #profile .absolute { display: none !important; }
+
+            html, body {
+                background: #111111 !important; color: #b9b9b9 !important;
+                font-size: 9pt !important; line-height: 1.5 !important;
+            }
+            .reveal, #app-content, .img-fade {
+                opacity: 1 !important; transform: none !important; visibility: visible !important;
+            }
+            #app-content { display: block !important; padding: 0 !important; }
+
+            section {
+                padding: 0 0 5mm 0 !important; margin: 0 !important;
+                border: 0 !important; background: transparent !important;
+                max-width: none !important; min-height: 0 !important;
+            }
+
+            /* ขึ้นหน้าใหม่ให้แต่ละหมวด
+               หน้า 1: ประวัติ + ประสบการณ์ทำงาน
+               หน้า 2: Skills + งานฟรีแลนซ์
+               หน้า 3 เป็นต้นไป: ผลงาน */
+            #skills, #portfolio { break-before: page; page-break-before: always; }
+            #services { break-before: auto; page-break-before: auto; }
+            #skills { background: transparent !important; }
+
+            /* ══ หัวกระดาษ ══════════════════════════════════════
+               A4 กว้างจริงราว 703px ต่ำกว่า breakpoint md: (768px)
+               หน้าเว็บจึงตกไปใช้เลย์เอาต์มือถือ ต้องบังคับกลับเป็นสองคอลัมน์เอง */
+            #profile { padding-bottom: 4mm !important; }
+            #profile > .reveal {
+                display: flex !important; flex-direction: row !important;
+                align-items: center !important; gap: 6mm !important;
+                padding-bottom: 4mm !important;
+                border-bottom: 0.8pt solid rgba(212,175,55,.45) !important;
+            }
+            #profile > .reveal > div:first-child {
+                width: auto !important; flex: 1 1 auto !important; text-align: left !important;
+            }
+            #profile > .reveal > div:last-child {
+                width: auto !important; flex: 0 0 30mm !important; justify-content: flex-end !important;
+            }
+            #profile .group { width: 30mm !important; height: 37mm !important; }
+            #profile .group > div {
+                border-radius: 4mm !important; border: 0.8pt solid rgba(212,175,55,.5) !important;
+                background: #262626 !important;
+            }
+            #profile-pic { width: 100% !important; height: 100% !important; object-fit: cover !important; }
+
+            #profile .text-gold.font-mono { font-size: 7pt !important; margin: 0 0 1.5mm 0 !important; }
+            #fullname-display {
+                font-size: 21pt !important; line-height: 1.1 !important;
+                margin: 0 0 1mm 0 !important; color: #ffffff !important;
+            }
+            #profile h2 { font-size: 10.5pt !important; height: auto !important; margin: 0 0 2mm 0 !important; color: #9a9a9a !important; }
+            .typing-cursor::after { content: '' !important; }
+            #birthday-display {
+                display: block !important; font-size: 7.5pt !important;
+                margin: 0 0 2.5mm 0 !important; padding-left: 2.5mm !important;
+                border-left: 1.2pt solid rgba(212,175,55,.6) !important; color: #8a8a8a !important;
+            }
+            /* แถวติดต่อ: บนมือถือมันเป็นแนวตั้งกลางจอ บังคับให้เป็นแถวเดียวชิดซ้าย */
+            #profile .flex.flex-col.sm\:flex-row {
+                flex-direction: row !important; justify-content: flex-start !important;
+                align-items: center !important; gap: 3mm !important;
+                margin: 0 !important; --tw-space-y-reverse: 0 !important;
+            }
+            #profile .flex.flex-col.sm\:flex-row > * { margin: 0 !important; }
+            #profile #email, #profile .rounded-full {
+                border: 0.6pt solid rgba(255,255,255,.18) !important;
+                padding: 1mm 3mm !important; font-size: 8pt !important;
+                background: rgba(255,255,255,.03) !important; color: #b9b9b9 !important;
+            }
+            #profile #email { color: #b9b9b9 !important; }
+
+            /* ══ หัวข้อ section ══ */
+            section > .reveal > h3, section > div > .reveal > h3 {
+                font-size: 12.5pt !important; margin: 0 !important;
+                color: #ffffff !important; letter-spacing: -0.01em !important;
+            }
+            section > .reveal > p, section > div > .reveal > p {
+                font-size: 6.8pt !important; color: #8a6d14 !important;
+                margin: 0.5mm 0 0 0 !important; letter-spacing: 0.22em !important;
+            }
+            .reveal.mb-20 {
+                margin: 0 0 3mm 0 !important; padding-bottom: 1.5mm !important;
+                border-bottom: 0.8pt solid rgba(212,175,55,.35) !important;
+                display: block !important;
+            }
+
+            /* ══ การ์ดทั่วไป ══ */
+            .job-card-item, #services-container > div,
+            #timeline-container > div > div, #skills-container > div {
+                background: #171717 !important;
+                border: 0.5pt solid rgba(255,255,255,.09) !important;
+                border-radius: 2.5mm !important; box-shadow: none !important;
+                break-inside: avoid; page-break-inside: avoid;
+                padding: 3.5mm !important; margin: 0 0 2.5mm 0 !important; transform: none !important;
+            }
+
+            /* ── ประสบการณ์ทำงาน ── */
+            #experience-container > div { display: block !important; }
+            #experience-container > div > div:first-child { display: none !important; }
+            #experience-container > div > div { width: 100% !important; }
+            /* ลูกตัวแรกของการ์ดคือกล่องตัวนับวันแบบมือถือ (md:hidden จะซ่อนก็ต่อเมื่อจอ >= 768px
+               แต่กระดาษ A4 กว้างแค่ ~703px คลาสนั้นจึงไม่ทำงาน ต้องสั่งซ่อนเองด้วย selector ที่แรงพอ) */
+            #experience-container .job-card-item > div:first-of-type { display: none !important; }
+            /* ลูกตัวที่สองคือแถว ตำแหน่ง / บริษัท / ช่วงเวลา */
+            #experience-container .job-card-item > div:nth-of-type(2) {
+                display: flex !important; flex-direction: row !important;
+                justify-content: space-between !important; align-items: baseline !important;
+                gap: 4mm !important; margin: 0 0 1.5mm 0 !important;
+            }
+            .job-card-item h4 { font-size: 11pt !important; color: #ffffff !important; margin: 0 !important; }
+            .job-card-item h4 + p { font-size: 8pt !important; color: #c9a227 !important; margin: 0.5mm 0 0 0 !important; letter-spacing: 0.12em !important; }
+            .job-card-item span {
+                font-size: 7.5pt !important; padding: 0.8mm 2.5mm !important; white-space: nowrap;
+                background: rgba(212,175,55,.14) !important; color: #d4af37 !important;
+                border: 0.5pt solid rgba(212,175,55,.3) !important;
+            }
+            .job-card-item p:last-child { font-size: 8.5pt !important; color: #a8a8a8 !important; margin: 0 !important; }
+
+            /* ── ทักษะ: 3 คอลัมน์ ── */
+            #skills-container {
+                display: grid !important; grid-template-columns: repeat(3, 1fr) !important;
+                gap: 2.5mm !important;
+            }
+            #skills-container > div { padding: 2.5mm !important; margin: 0 !important; }
+            #skills-container h4 { font-size: 9pt !important; color: #ffffff !important; }
+            #skills-container p, #skills-container span, #skills-container li { font-size: 7.5pt !important; }
+
+            /* ── งานฟรีแลนซ์ ── */
+            #services-container { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 2.5mm !important; }
+            #services-container > div { margin: 0 !important; }
+            #services-container h4 { font-size: 10pt !important; color: #ffffff !important; margin: 0 0 1mm 0 !important; }
+            #services-container p { font-size: 8pt !important; color: #a8a8a8 !important; }
+
+            /* ══ ผลงาน: รูปซ้าย ข้อความขวา ══ */
+            #timeline-container { display: block !important; }
+            #timeline-container > * + * { margin-top: 0 !important; }
+            /* หัวข้อหมวด – ต้องแรงกว่ากฎชื่อโปรเจกต์ที่อยู่ถัดลงไป */
+            #portfolio #timeline-container > h4 {
+                font-size: 8pt !important; color: #d4af37 !important;
+                text-transform: uppercase; letter-spacing: 0.25em !important;
+                margin: 4mm 0 2mm 0 !important; break-after: avoid; font-weight: 600 !important;
+                border-bottom: 0.5pt solid rgba(212,175,55,.3); padding-bottom: 1.2mm;
+            }
+            #portfolio #timeline-container > h4:first-child { margin-top: 1mm !important; }
+            #timeline-container > div > div > div {
+                display: flex !important; flex-direction: row !important;
+                align-items: center !important; gap: 3.5mm !important;
+            }
+            #timeline-container > div > div > div > div:first-child {
+                order: 1 !important; width: 44mm !important; flex: 0 0 44mm !important;
+            }
+            #timeline-container > div > div > div > div:last-child {
+                order: 2 !important; width: auto !important; flex: 1 1 auto !important;
+            }
+            #timeline-container .img-container {
+                width: 44mm !important; height: 27mm !important;
+                border: 0.5pt solid rgba(255,255,255,.12) !important;
+                border-radius: 2mm !important; background-color: #262626 !important;
+            }
+            #timeline-container img {
+                filter: none !important; width: 100% !important; height: 100% !important;
+                object-fit: cover !important;
+            }
+            #timeline-container h4 { font-size: 10.5pt !important; color: #ffffff !important; margin: 0 0 1mm 0 !important; }
+            #timeline-container .flex.items-center.gap-4 { gap: 2mm !important; margin: 0 0 1mm 0 !important; }
+            #timeline-container .font-mono { font-size: 7.5pt !important; color: #d4af37 !important; }
+            #timeline-container .text-neutral-500 { font-size: 7pt !important; color: #808080 !important; }
+            #timeline-container p { font-size: 8pt !important; color: #a8a8a8 !important; margin: 0 0 1mm 0 !important; }
+            #timeline-container .mb-4, #timeline-container .mb-6, #timeline-container .mb-8 { margin-bottom: 1mm !important; }
+            #timeline-container .h-\[1px\] { background: rgba(212,175,55,.4) !important; }
+
+            #timeline-container a {
+                display: inline !important; border: 0 !important; padding: 0 !important;
+                font-size: 7pt !important; color: #d4af37 !important;
+                letter-spacing: 0.1em !important;
+            }
+            #timeline-container a svg { display: none !important; }
+            #timeline-container a[href^="http"]::after {
+                content: "  " attr(href); font-size: 6.5pt; color: #6f6f6f;
+                word-break: break-all; text-transform: none; letter-spacing: 0;
+            }
+            a { text-decoration: none !important; }
+            h1, h2, h3, h4 { break-after: avoid; page-break-after: avoid; }
+        }
+    </style>
+</head>
+<body class="relative bg-surface-100">
+
+    <div id="scroll-progress-container">
+        <div id="scroll-progress"></div>
+    </div>
+
+    <div id="mouse-spotlight"></div>
+    <div id="tsparticles"></div>
+
+    <div id="loading" class="fixed inset-0 bg-surface-100 z-50 flex flex-col items-center justify-center transition-opacity duration-500">
+        <div class="loader-ring mb-4"></div>
+        <p class="font-mono text-xs tracking-widest text-neutral-500 uppercase">Synchronizing Data</p>
+    </div>
+
+    <nav class="fixed top-0 w-full z-50 px-8 py-6 backdrop-blur-xl border-b border-gold/40 bg-surface-100/90 transition-all duration-300">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div class="text-white font-bold tracking-tight text-xl">TL<span class="text-gold">.</span></div>
+            <div class="hidden md:flex space-x-8 text-xs uppercase tracking-wider text-neutral-400 font-medium font-mono">
+                <a href="#experience" class="hover:text-gold transition-colors">Work Experience</a>
+                <a href="#skills" class="hover:text-gold transition-colors">Skills</a>
+                <a href="#services" class="hover:text-gold transition-colors">Freelance</a>
+                <a href="#portfolio" class="hover:text-gold transition-colors">Portfolio</a>
+            </div>
+
+            <button id="nav-toggle" aria-label="เปิดเมนู" aria-expanded="false"
+                    class="md:hidden w-11 h-11 -mr-2 flex flex-col items-center justify-center gap-[5px] text-gold">
+                <span class="block w-5 h-[1.5px] bg-current transition-transform duration-300"></span>
+                <span class="block w-5 h-[1.5px] bg-current transition-opacity duration-300"></span>
+                <span class="block w-5 h-[1.5px] bg-current transition-transform duration-300"></span>
+            </button>
+        </div>
+    </nav>
+
+    <div id="mobile-menu" class="md:hidden fixed inset-0 z-40 hidden flex-col items-center justify-center gap-2 bg-surface-100/98 backdrop-blur-xl">
+        <a href="#experience" class="mobile-link">Work Experience</a>
+        <a href="#skills" class="mobile-link">Skills</a>
+        <a href="#services" class="mobile-link">Freelance</a>
+        <a href="#portfolio" class="mobile-link">Portfolio</a>
+    </div>
+
+    <main id="app-content" class="hidden opacity-0 transition-opacity duration-1000 relative pt-32 md:pt-10">
+        
+        <section id="profile" class="min-h-[85vh] flex flex-col justify-center px-8 max-w-6xl mx-auto">
+            <div class="reveal flex flex-col-reverse md:flex-row items-center justify-between gap-12 md:gap-8">
+                <div class="w-full md:w-3/5 text-center md:text-left z-10">
+                    <p class="text-gold font-mono text-sm tracking-widest uppercase mb-4">Professional Profile</p>
+                    <h1 id="fullname-display" class="text-[2.1rem] sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-4 tracking-tight leading-[1.1] md:leading-none break-words">Loading...</h1>
+                    <h2 class="text-xl md:text-2xl text-neutral-400 mb-6 font-light tracking-wide h-8">
+                        <span id="position" class="typing-cursor"></span>
+                    </h2>
+                    <p id="birthday-display" class="font-mono text-xs text-neutral-500 uppercase tracking-[0.2em] mb-8 md:mb-10 md:border-l-2 md:border-gold/50 md:pl-4 hidden">Est. 1988</p>
+                    <div class="flex flex-col sm:flex-row items-center justify-center md:justify-start space-y-4 sm:space-y-0 sm:space-x-6 text-sm text-neutral-500">
+                        <a href="#" id="email" class="hover:text-gold transition-colors flex items-center border border-white/10 hover:border-gold/50 rounded-full px-6 py-3">
+                            <span class="email-text">email@domain.com</span>
+                        </a>
+                        <div class="flex items-center gap-4 px-5 py-2.5 border border-white/10 rounded-full bg-white/[0.01]">
+                            <div id="phone" class="flex items-center font-mono">
+                                <span class="phone-text">000-000-0000</span>
+                            </div>
+                            <div id="line-divider" class="w-[1px] h-4 bg-white/20 hidden"></div>
+                            <div id="line-id-container" class="flex items-center font-mono hidden">
+                                <span class="text-gold/70 mr-2 uppercase tracking-widest text-[10px]">Line:</span>
+                                <span class="line-text text-white"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="w-full md:w-2/5 flex justify-center md:justify-end z-10">
+                    <div class="relative group w-56 h-56 md:w-64 md:h-[350px] lg:w-[280px] lg:h-[380px] cursor-default">
+                        
+                        <div class="absolute -inset-3 bg-gold/20 blur-2xl rounded-[3rem] opacity-0 group-hover:opacity-100 transition-all duration-700 pointer-events-none"></div>
+                        <div class="absolute -inset-1 bg-gold/40 blur-lg rounded-[3rem] opacity-0 group-hover:opacity-100 transition-all duration-500 pointer-events-none"></div>
+                        
+                        <div class="relative w-full h-full rounded-[2.5rem] md:rounded-[3rem] overflow-hidden border border-white/10 shadow-2xl bg-surface-300 z-10 transform transition-all duration-500 group-hover:scale-[1.02] group-hover:border-gold/50">
+                            <img id="profile-pic" decoding="async" fetchpriority="high"
+                                 data-placeholder="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1000&auto=format&fit=crop"
+                                 onerror="imgFallback(this)" class="w-full h-full object-cover relative z-0 transition-transform duration-700 group-hover:scale-110" alt="Profile Picture">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="experience" class="py-32 border-t border-white/5 max-w-6xl mx-auto px-8 relative z-10">
+            <div class="reveal mb-20">
+                <h3 class="text-4xl md:text-5xl font-bold text-white mb-4">Work Experience</h3>
+                <p class="text-neutral-500 font-mono text-sm uppercase tracking-widest">Employment Timeline</p>
+            </div>
+            
+            <div id="experience-container">
+            </div>
+        </section>
+
+        <section id="skills" class="py-32 bg-surface-200 border-y border-white/5 relative z-10">
+            <div class="max-w-6xl mx-auto px-8 relative">
+                <div class="glow-blob top-[-200px] right-[-200px]" style="background: radial-gradient(circle, rgba(212,175,55,0.03) 0%, rgba(0,0,0,0) 60%);"></div>
+                <div class="reveal mb-20">
+                    <h3 class="text-4xl md:text-5xl font-bold text-white mb-4">Skills</h3>
+                    <p class="text-neutral-500 font-mono text-sm uppercase tracking-widest">Core Technical Skills</p>
+                </div>
+                <div id="skills-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 relative z-10"></div>
+            </div>
+        </section>
+
+        <section id="services" class="py-32 max-w-6xl mx-auto px-8 relative z-10">
+            <div class="reveal mb-20">
+                <h3 class="text-4xl md:text-5xl font-bold text-white mb-4">Freelance Projects</h3>
+                <p class="text-neutral-500 font-mono text-sm uppercase tracking-widest">Technical Services</p>
+            </div>
+            <div id="services-container" class="space-y-8 max-w-4xl"></div>
+        </section>
+
+        <section id="portfolio" class="py-32 border-t border-white/5 max-w-6xl mx-auto px-8 relative z-10">
+            <div class="reveal mb-20 flex flex-col md:flex-row md:items-end justify-between border-b border-white/10 pb-6 gap-8 relative">
+                <div class="glow-blob top-[-100px] left-[-200px]" style="background: radial-gradient(circle, rgba(212,175,55,0.03) 0%, rgba(0,0,0,0) 60%);"></div>
+                <div>
+                    <h3 class="text-4xl md:text-5xl font-bold text-white mb-4">Profile & Portfolio</h3>
+                    <!--<p class="text-neutral-500 font-mono text-sm uppercase tracking-widest">Projects & Deliverables</p>-->
+                </div>
+                <div id="portfolio-tabs" class="flex flex-wrap gap-6 md:gap-8 text-sm font-mono uppercase tracking-widest relative z-10"></div>
+            </div>
+            <div id="timeline-container" class="space-y-16 transition-opacity duration-500 relative z-10"></div>
+        </section>
+
+    </main>
+
+    <div id="lightbox" role="dialog" aria-modal="true" aria-label="ดูรูปขนาดเต็ม">
+        <div class="lb-btn" id="lb-close" title="ปิด (Esc)">✕</div>
+        <div class="lb-btn" id="lb-prev" title="ก่อนหน้า (←)">‹</div>
+        <div class="lb-btn" id="lb-next" title="ถัดไป (→)">›</div>
+        <img id="lb-img" alt="">
+        <div id="lb-caption"></div>
+    </div>
+
+    <div id="print-hint" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+        <div class="max-w-md w-full bg-surface-200 border border-gold/40 rounded-3xl p-8 shadow-2xl">
+            <p class="text-gold font-mono text-[10px] tracking-[0.25em] uppercase mb-3">ก่อนบันทึก PDF</p>
+            <h4 class="text-white text-2xl font-bold mb-5 tracking-tight">ตั้งค่า 2 อย่างในหน้าต่างพิมพ์</h4>
+            <ul class="space-y-4 mb-8 text-sm text-neutral-300">
+                <li class="flex gap-3">
+                    <span class="text-gold font-mono">1</span>
+                    <span>ติ๊ก <b class="text-white">Background graphics</b><br>
+                    <span class="text-neutral-500 text-xs">ถ้าไม่ติ๊ก พื้นหลังสีเข้มจะไม่ถูกพิมพ์ กระดาษจะออกมาขาว</span></span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="text-gold font-mono">2</span>
+                    <span>เอาติ๊ก <b class="text-white">Headers and footers</b> ออก<br>
+                    <span class="text-neutral-500 text-xs">จะได้ไม่มีวันที่กับ localhost:22432 ติดมาบนหัวกระดาษ</span></span>
+                </li>
+            </ul>
+            <label class="flex items-center gap-2 text-xs text-neutral-500 mb-6 cursor-pointer">
+                <input type="checkbox" id="print-hint-off" class="accent-gold"> ไม่ต้องเตือนอีก
+            </label>
+            <div class="flex gap-3">
+                <button id="print-hint-go" class="flex-1 bg-gold text-black font-mono text-xs uppercase tracking-widest py-3 rounded-full hover:bg-gold-light transition-colors">เปิดหน้าต่างพิมพ์</button>
+                <button id="print-hint-cancel" class="px-6 border border-white/15 text-neutral-400 font-mono text-xs uppercase tracking-widest py-3 rounded-full hover:border-white/30 transition-colors">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <button id="print-cv" title="บันทึกเป็น PDF" aria-label="บันทึกเป็น PDF"
+            class="fixed bottom-5 right-5 md:bottom-6 md:right-6 z-40 flex items-center justify-center gap-2
+                   w-12 h-12 md:w-auto md:h-auto md:px-5 md:py-3 rounded-full
+                   bg-surface-200/90 backdrop-blur border border-gold/40 text-gold text-xs
+                   font-mono uppercase tracking-widest hover:bg-gold hover:text-black
+                   transition-all duration-300 shadow-lg">
+        <svg class="w-5 h-5 md:w-4 md:h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zM9 7h6V5a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z"></path></svg>
+        <span class="hidden md:inline">Save PDF</span>
+    </button>
+
+    <footer class="py-12 pb-24 md:pb-12 border-t border-white/5 text-center bg-surface-100 relative z-10">
+        <p class="text-neutral-600 text-[10px] font-mono uppercase tracking-[0.2em]">&copy; 2026 Thanadkit Limcharoen</p>
+    </footer>
+
+    <script>
+        // API_URL ประกาศไว้ใน <head> แล้ว (เพื่อให้ fetch เริ่มเร็วที่สุด)
+        let globalPortfolioData = [];
+
+        window.addEventListener('scroll', () => {
+            const scrollPx = document.documentElement.scrollTop || document.body.scrollTop;
+            const winHeightPx = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            const scrolled = (scrollPx / winHeightPx) * 100;
+            const progressEl = document.getElementById('scroll-progress');
+            if(progressEl) progressEl.style.height = scrolled + '%';
+        });
+
+        async function loadParticles() {
+            if (typeof tsParticles === 'undefined') return;
+            await tsParticles.load("tsparticles", {
+                fpsLimit: 60,
+                interactivity: { events: { onHover: { enable: false }, resize: true } },
+                particles: {
+                    color: { value: "#d4af37" },
+                    links: { color: "#d4af37", distance: 180, enable: true, opacity: 0.1, width: 1 },
+                    move: { direction: "none", enable: true, outModes: { default: "bounce" }, random: true, speed: 0.2, straight: false },
+                    number: { density: { enable: true, area: 800 }, value: 50 },
+                    opacity: { value: 0.2 },
+                    shape: { type: "circle" },
+                    size: { value: { min: 1, max: 2 } },
+                },
+                detectRetina: true,
+            });
+        }
+        // tsparticles โหลดแบบ defer แล้ว จึงต้องรอ window.load และรอจังหวะที่เบราว์เซอร์ว่างก่อนค่อยวาด
+        window.addEventListener('load', function () {
+            const start = function () { loadParticles(); };
+            if (window.requestIdleCallback) requestIdleCallback(start, { timeout: 2000 });
+            else setTimeout(start, 300);
+        });
+
+        const spotlight = document.getElementById('mouse-spotlight');
+        document.addEventListener('mousemove', (e) => {
+            spotlight.style.background = `radial-gradient(600px circle at ${e.clientX}px ${e.clientY}px, rgba(212, 175, 55, 0.06), transparent 40%)`;
+            spotlight.style.opacity = '1';
+        });
+        document.addEventListener('mouseleave', () => spotlight.style.opacity = '0');
+
+        // drive.google.com/uc?export=view ช้าเพราะ redirect หลายต่อและส่งไฟล์ต้นฉบับเต็มขนาด
+        // lh3.googleusercontent.com เป็น image CDN ของ Google ตอบเร็วกว่า และสั่งย่อขนาดได้ด้วย =wXXXX
+        // ── ตัวเลือกลิงก์รูป ────────────────────────────────────
+        // updater ใน Docker จะเติม image_src / image_srcset (ไฟล์ WebP ที่ย่อไว้ใน /media) มาให้
+        // ถ้าไม่มี เช่นเปิดจาก Netlify หรือ updater ยังไม่ทันทำงานรอบแรก ก็ใช้ลิงก์ต้นทางตรง ๆ
+
+        // ค่าใน Sheet อาจเป็นลิงก์เต็ม หรือเป็น Google Drive file id เปล่า ๆ
+        function normalizeSrc(raw) {
+            const v = String(raw || '').trim();
+            if (!v) return '';
+            if (/^https?:\/\//i.test(v)) {
+                const dm = v.match(/\/d\/([-\w]{20,})/) || v.match(/[?&]id=([-\w]{20,})/);
+                return dm ? 'https://lh3.googleusercontent.com/d/' + dm[1] + '=w1600' : v;
+            }
+            if (/^[-\w]{25,}$/.test(v)) return 'https://lh3.googleusercontent.com/d/' + v + '=w1600';
+            return v;
+        }
+
+        function pickImage(item, rawField, prefix) {
+            const origin = normalizeSrc(item ? item[rawField] : '');
+            return {
+                src:    (item && item[prefix + '_src'])    || origin,
+                srcset: (item && item[prefix + '_srcset']) || '',
+                full:   (item && item[prefix + '_full'])   || origin,
+                lqip:   (item && item[prefix + '_lqip'])   || '',
+                origin: origin
+            };
+        }
+
+        // ลำดับถอย: ไฟล์ใน /media → ลิงก์ต้นทาง → รูป placeholder
+        window.imgFallback = function (el) {
+            el.removeAttribute('srcset');   // ต้องล้าง ไม่งั้นเบราว์เซอร์ยังยึด srcset เดิมอยู่
+            el.removeAttribute('sizes');
+            const origin = el.dataset.origin;
+            if (origin && el.src !== origin) { el.src = origin; return; }
+            el.onerror = null;
+            if (el.dataset.placeholder) el.src = el.dataset.placeholder;
+        };
+
+        let typeGen = 0;   // ยกเลิกรอบเก่าได้ ไม่งั้นตัวอักษรจะพิมพ์แทรกทับข้อความที่เราเซ็ตทีหลัง
+
+        function typeWriter(text, elementId, speed = 50) {
+            const gen = ++typeGen;
+            let i = 0; const el = document.getElementById(elementId); el.innerHTML = '';
+            function type() {
+                if (gen !== typeGen) return;
+                if (i < text.length) { el.innerHTML += text.charAt(i); i++; setTimeout(type, speed); }
+            }
+            type();
+        }
+
+        // --- เปลี่ยนสูตรคำนวณวันใหม่: เริ่มต้นนับตั้งแต่วันที่ 1 มกราของปีแรกสุด ---
+        function calculateDaysFromStart(durationStr) {
+            if(!durationStr) return 0;
+            const now = new Date();
+            
+            // ค้นหาตัวเลข 4 หลักที่เป็นปีทั้งหมด
+            const years = durationStr.match(/\d{4}/g);
+            if (years && years.length > 0) {
+                const startYear = parseInt(years[0]); // ดึงปีแรกสุด เช่น 2017
+                const startDate = new Date(startYear, 0, 1); // ตั้งให้เป็นวันที่ 1 มกราคมของปีนั้น
+                const days = Math.floor((now - startDate) / (1000 * 60 * 60 * 24));
+                return days > 0 ? days : 0;
+            }
+            return 0;
+        }
+
+        let currentCounterValue = 0;
+        let counterAnimationId = null;
+
+        // อัปเดตตัวเลขแสดงผล (ไม่ต้องเช็ก Present แล้ว เพราะจะแสดงเป็นตัวเลขทั้งหมด)
+        function updateStickyCounter(targetValue) {
+            const counterEl = document.getElementById('dynamic-days-counter');
+            const labelEl = document.getElementById('dynamic-days-label');
+            if (!counterEl || !labelEl) return;
+            
+            labelEl.innerText = "Days Since Started";
+            
+            const duration = 1000; 
+            const startValue = currentCounterValue;
+            const change = targetValue - startValue;
+            let startTime = null;
+
+            if (counterAnimationId) cancelAnimationFrame(counterAnimationId);
+
+            function step(timestamp) {
+                if (!startTime) startTime = timestamp;
+                const progress = timestamp - startTime;
+                const percentage = Math.min(progress / duration, 1);
+                const easeOut = 1 - Math.pow(1 - percentage, 3);
+                
+                currentCounterValue = Math.round(startValue + (change * easeOut));
+                counterEl.innerText = currentCounterValue.toLocaleString();
+
+                if (progress < duration) {
+                    counterAnimationId = requestAnimationFrame(step);
+                } else {
+                    currentCounterValue = targetValue;
+                    counterEl.innerText = targetValue.toLocaleString();
+                }
+            }
+            counterAnimationId = requestAnimationFrame(step);
+        }
+
+        function initJobCardObserver() {
+            const jobCards = document.querySelectorAll('.job-card-item');
+            if (jobCards.length === 0) return;
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const targetDays = parseInt(entry.target.getAttribute('data-days'));
+                        updateStickyCounter(targetDays);
+                    }
+                });
+            }, { rootMargin: "-30% 0px -40% 0px" });
+
+            jobCards.forEach(card => observer.observe(card));
+            
+            setTimeout(() => {
+                const firstCard = jobCards[0];
+                updateStickyCounter(parseInt(firstCard.getAttribute('data-days')));
+            }, 100);
+        }
+
+        let hasPainted = false;
+        let lastRenderedSig = null;
+
+        function renderAll(data) {
+            if (!data) return;
+
+            // ถ้าข้อมูลสดเหมือน cache เป๊ะ ก็ไม่ต้องวาดใหม่ (กันจอกระพริบ / กัน tab ที่ผู้ใช้เลือกไว้เด้งกลับ)
+            const sig = JSON.stringify(data);
+            if (sig === lastRenderedSig) return;
+            lastRenderedSig = sig;
+
+            globalPortfolioData = data.portfolio ? data.portfolio.filter(p => p.status === true || String(p.status).trim().toUpperCase() === "TRUE") : [];
+
+            renderProfile(data.profile);
+            renderExperience(data.experience);
+            renderSkills(data.skills);
+            renderServices(data.services);
+            initPortfolioTabs();
+
+            if (!hasPainted) {
+                hasPainted = true;
+                const loading = document.getElementById('loading');
+                const app = document.getElementById('app-content');
+
+                // โชว์เนื้อหาทันที แล้วให้ loader จางทับ (เดิมรอ setTimeout 500+50+500 ms เปล่า ๆ)
+                app.classList.remove('hidden');
+                // ห้ามพึ่ง requestAnimationFrame ตรงนี้ – ในแท็บที่ซ่อนอยู่ (เปิดลิงก์ไว้เบื้องหลัง,
+                // เครื่องมือ screenshot, crawler) rAF จะไม่ถูกเรียก เนื้อหาจะค้างที่ opacity 0 ตลอด
+                void app.offsetHeight;        // บังคับ reflow เพื่อให้ transition 0 -> 1 ยังวิ่ง
+                app.style.opacity = '1';
+
+                loading.style.opacity = '0';
+                loading.style.pointerEvents = 'none';
+                setTimeout(() => loading.remove(), 500);
+
+                if (data.profile && data.profile.position) {
+                    window.__position = data.profile.position;   // เก็บไว้เติมให้ครบตอนสั่งพิมพ์
+                    typeWriter(data.profile.position, 'position', 45);
+                }
+            }
+
+            initScrollReveal();
+
+            // ตาข่ายกันตก: ถ้าด้วยเหตุใดก็ตามเนื้อหายังโปร่งใสอยู่ ให้บังคับโชว์
+            setTimeout(function () {
+                const a = document.getElementById('app-content');
+                if (a && parseFloat(getComputedStyle(a).opacity) < 0.9) {
+                    a.style.transition = 'none';   // แท็บที่ซ่อนอยู่ไม่เดิน transition ต้องตัดทิ้ง
+                    a.style.opacity = '1';
+                }
+                document.querySelectorAll('.reveal:not(.active)').forEach(function (el) {
+                    const r = el.getBoundingClientRect();
+                    if (r.top < innerHeight && r.bottom > 0) el.classList.add('active');
+                });
+            }, 1500);
+        }
+
+        async function initWebCV() {
+            // 1) มีข้อมูลรอบก่อนใน localStorage → วาดเลย ผู้ใช้เห็นหน้าเต็มแทบจะทันที
+            if (window.cachedData) {
+                try { renderAll(window.cachedData); } catch (e) { console.error('cache render failed', e); }
+            }
+
+            // 2) รอของสดจาก Apps Script แล้วค่อยอัปเดตทับเงียบ ๆ (stale-while-revalidate)
+            try {
+                renderAll(await window.dataPromise);
+            } catch (error) {
+                console.error("Fetch error:", error);
+                if (!hasPainted) {
+                    document.getElementById('loading').innerHTML = '<p class="text-red-500 text-sm tracking-widest uppercase mb-2">API Connection Failed</p>';
+                }
+            }
+        }
+
+        function renderProfile(profileData) {
+            if(!profileData) return;
+            const fullName = profileData.fullname || 'Name Not Found';
+            const nickname = profileData.Nickname ? ` (${profileData.Nickname})` : '';
+            document.getElementById('fullname-display').innerText = `${fullName}${nickname}`;
+            
+            if(profileData.birthday) {
+                document.getElementById('birthday-display').innerText = `DOB: ${profileData.birthday}`;
+                document.getElementById('birthday-display').classList.remove('hidden');
+            }
+            
+            document.querySelector('.email-text').innerText = profileData.email || '-';
+            document.getElementById('email').href = `mailto:${profileData.email}`;
+            document.querySelector('.phone-text').innerText = profileData.phone || '-';
+            
+            if(profileData.LineID) {
+                document.querySelector('.line-text').innerText = profileData.LineID;
+                document.getElementById('line-id-container').classList.remove('hidden');
+                document.getElementById('line-divider').classList.remove('hidden');
+            }
+            if (profileData.pic || profileData.pic_src) {
+                const pic = document.getElementById('profile-pic');
+                pic.decoding = 'async';
+                pic.setAttribute('fetchpriority', 'high'); // รูปโปรไฟล์อยู่บนสุด ให้ความสำคัญสูงสุด
+                const chosen = pickImage(profileData, 'pic', 'pic');
+                pic.dataset.origin = chosen.origin;
+                if (chosen.lqip && pic.parentElement) {
+                    pic.parentElement.style.backgroundImage = "url('" + chosen.lqip + "')";
+                    pic.parentElement.style.backgroundSize = 'cover';
+                    pic.parentElement.style.backgroundPosition = 'center';
+                }
+                pic.classList.add('img-fade');
+                if (chosen.srcset) { pic.srcset = chosen.srcset; pic.sizes = '(min-width: 768px) 280px, 224px'; }
+                pic.src = chosen.src;
+                initImageFade(pic.parentElement);
+            }
+        }
+
+        function renderExperience(expData) {
+            const container = document.getElementById('experience-container');
+            if(!expData || expData.length === 0) {
+                container.innerHTML = '<p class="text-neutral-500">ไม่มีข้อมูลประวัติการทำงาน</p>';
+                return;
+            }
+
+            const activeExp = expData
+                .filter(e => e.status === true || String(e.status).trim().toUpperCase() === "TRUE")
+                .sort((a, b) => parseInt(a.sort_order) - parseInt(b.sort_order));
+
+            if(activeExp.length === 0) return;
+
+            let html = `
+                <div class="flex flex-col md:flex-row gap-8 md:gap-12 relative w-full">
+                    
+                    <div class="hidden md:flex w-full md:w-1/4 sticky top-40 self-start pt-2 flex-col items-center md:items-start transition-all duration-300 z-20">
+                        <h3 class="text-6xl md:text-7xl font-black text-gold tracking-tighter" id="dynamic-days-counter">0</h3>
+                        <p class="text-neutral-500 font-mono text-[10px] md:text-xs uppercase tracking-[0.2em] mt-2" id="dynamic-days-label">Days Since Started</p>
+                    </div>
+
+                    <div class="w-full md:w-3/4 flex flex-col space-y-10 z-10">
+            `;
+
+            activeExp.forEach((e) => {
+                const formattedDesc = e.description ? e.description.replace(/\n/g, '<br>') : '';
+                
+                // ใช้ฟังก์ชันใหม่ที่คำนวณจากปีเริ่มงาน
+                const daysSinceStart = calculateDaysFromStart(e.duration);
+
+                html += `
+                        <div class="job-card-item reveal bg-white/[0.015] hover:bg-white/[0.03] border border-white/5 hover:border-gold/30 rounded-3xl p-8 md:p-10 transition-all duration-500 shadow-lg relative z-10 hover:-translate-y-1" data-days="${daysSinceStart}">
+                            
+                            <div class="md:hidden mb-6 border-b border-white/10 pb-4 flex flex-col items-center">
+                                <h3 class="text-5xl font-black text-gold">${daysSinceStart.toLocaleString()}</h3>
+                                <p class="text-neutral-500 font-mono text-[10px] uppercase tracking-[0.2em] mt-2">Days Since Started</p>
+                            </div>
+
+                            <div class="flex flex-col md:flex-row md:justify-between md:items-start gap-4 mb-6">
+                                <div>
+                                    <h4 class="text-3xl md:text-4xl font-bold text-white group-hover:text-gold transition-colors duration-300 tracking-tight">${e.role}</h4>
+                                    <p class="text-gold/80 text-base md:text-lg font-medium mt-2 uppercase tracking-widest">${e.company}</p>
+                                </div>
+                                <div class="flex-shrink-0 mt-2 md:mt-0">
+                                    <span class="inline-block font-mono text-sm text-neutral-400 group-hover:text-white bg-white/5 group-hover:bg-gold/20 px-5 py-2 rounded-full border border-white/5 group-hover:border-gold/30 transition-all duration-300">
+                                        ${e.duration}
+                                    </span>
+                                </div>
+                            </div>
+                            <p class="text-neutral-300 text-base md:text-lg leading-relaxed max-w-4xl font-light">
+                                ${formattedDesc}
+                            </p>
+                        </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+            setTimeout(initJobCardObserver, 100);
+        }
+
+        function renderSkills(skillsData) {
+            const container = document.getElementById('skills-container');
+            if(!skillsData) return;
+            container.innerHTML = '';
+            const categories = [...new Set(skillsData.map(s => s.category))];
+            categories.forEach((cat, index) => {
+                let catHtml = `
+                    <div class="reveal bg-white/[0.015] hover:bg-white/[0.03] border border-white/5 hover:border-gold/30 rounded-2xl p-8 transition-all duration-500 shadow-lg flex flex-col h-full group/card relative z-0" style="transition-delay: ${index * 100}ms">
+                        <h4 class="text-white text-lg font-bold mb-8 uppercase tracking-widest border-b border-white/10 pb-4 flex items-center">
+                            <span class="w-1.5 h-5 bg-gold mr-3 rounded-sm opacity-60 group-hover/card:opacity-100 transition-opacity"></span>
+                            ${cat}
+                        </h4>
+                        <div class="space-y-6 flex-grow relative z-10">`;
+                skillsData.filter(s => s.category === cat).forEach(s => {
+                    const level = parseInt(s.level) || 0;
+                    let dotsHtml = '<div class="flex space-x-2">';
+                    for(let i=1; i<=5; i++) dotsHtml += i <= level ? '<div class="w-1.5 h-1.5 rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,0.4)]"></div>' : '<div class="w-1.5 h-1.5 rounded-full bg-surface-300"></div>';
+                    dotsHtml += '</div>';
+                    catHtml += `<div class="flex items-center justify-between group cursor-default"><span class="text-base text-neutral-400 group-hover:text-gold group-hover:translate-x-2 transition-all duration-300">${s.skill}</span>${dotsHtml}</div>`;
+                });
+                catHtml += `</div></div>`; container.innerHTML += catHtml;
+            });
+        }
+
+        function renderServices(servicesData) {
+            const container = document.getElementById('services-container');
+            if(!servicesData || servicesData.length === 0) return;
+            const activeServices = servicesData.filter(s => s.status === true || String(s.status).trim().toUpperCase() === "TRUE").sort((a, b) => parseInt(a.sort_order) - parseInt(b.sort_order));
+            container.innerHTML = ''; // เดิมไม่ได้ล้าง ทำให้การ์ดซ้อนกันถ้าถูกเรียกมากกว่า 1 ครั้ง
+            let servicesHtml = '';
+            activeServices.forEach((s, index) => {
+                const formattedDesc = s.description ? s.description.replace(/\n/g, '<br>') : '';
+                servicesHtml += `
+                    <div class="reveal bg-white/[0.015] hover:bg-white/[0.03] border border-white/5 hover:border-gold/30 rounded-2xl p-8 md:p-10 transition-all duration-500 shadow-lg group flex flex-col justify-between hover:-translate-y-1 w-full" style="transition-delay: ${index * 100}ms">
+                        <div>
+                            <h4 class="text-2xl md:text-3xl font-bold text-white group-hover:text-gold transition-colors duration-300 mb-4 tracking-tight">${s.title}</h4>
+                            <p class="text-neutral-400 text-base md:text-lg leading-relaxed font-light">${formattedDesc}</p>
+                        </div>
+                    </div>`;
+            });
+            container.innerHTML = servicesHtml;
+        }
+
+        function initPortfolioTabs() {
+            const tabsContainer = document.getElementById('portfolio-tabs');
+            let categories = [...new Set(globalPortfolioData.map(p => p.category))];
+            const preferredOrder = ['Production', 'Network'];
+            categories.sort((a, b) => {
+                let indexA = preferredOrder.indexOf(a), indexB = preferredOrder.indexOf(b);
+                if(indexA === -1) indexA = 999; if(indexB === -1) indexB = 999;
+                return indexA - indexB;
+            });
+            tabsContainer.innerHTML = '';
+            categories.forEach((cat, index) => {
+                tabsContainer.innerHTML += `<button class="tab-btn ${index === 0 ? 'active' : ''}" onclick="filterPortfolio('${cat}', this)">${cat}</button>`;
+            });
+            if (categories.length > 0) renderPortfolioShowcase(categories[0]);
+        }
+
+        function filterPortfolio(category, btnElement) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            if(btnElement) btnElement.classList.add('active');
+            renderPortfolioShowcase(category);
+        }
+
+        function renderPortfolioShowcase(activeCategory, targetEl) {
+            const container = targetEl || document.getElementById('timeline-container');
+            // fade-out 300ms มีไว้ตอนสลับแท็บเท่านั้น ครั้งแรกไม่มีอะไรให้ fade จึงไม่ต้องหน่วง
+            const isFirstPaint = container.innerHTML.trim() === '';
+            container.style.opacity = isFirstPaint ? '1' : '0';
+            const draw = () => {
+                container.innerHTML = '';
+                const projects = globalPortfolioData.filter(p => p.category === activeCategory).sort((a, b) => parseInt(a.sort_order) - parseInt(b.sort_order)); 
+                
+                if (projects.length === 0) {
+                    container.innerHTML = `<p class="text-neutral-500 text-center py-20 relative z-10">ไม่มีผลงานในหมวดหมู่ ${activeCategory}</p>`;
+                } else {
+                    let html = ''; // สะสมไว้ก่อน แล้วยัดเข้า DOM ครั้งเดียว เร็วกว่า innerHTML += ในลูปมาก
+                    projects.forEach((p, index) => {
+                        // การ์ดในหน้า Portfolio ใช้รูปปกขนาดเล็ก ไม่ใช่รูปเต็ม
+                        const pic       = pickImage(p, 'image_url', 'image');
+                        const imgUrl    = pic.src;
+                        const imgSet    = pic.srcset;
+                        const imgOrigin = pic.origin;
+                        const isEven = index % 2 === 0;
+                        const orderNum = p.sort_order ? String(p.sort_order).padStart(2, '0') : String(index + 1).padStart(2, '0');
+                        
+                        html += `
+                            <div class="reveal bg-white/[0.015] hover:bg-white/[0.03] border border-white/5 hover:border-gold/30 rounded-[2rem] p-6 md:p-10 transition-all duration-500 shadow-lg group relative overflow-hidden w-full">
+                                <div class="absolute -bottom-6 -right-4 md:-right-8 text-[120px] md:text-[200px] font-black text-white/[0.02] group-hover:text-gold/[0.05] transition-colors duration-700 pointer-events-none select-none leading-none z-0">
+                                    ${orderNum}
+                                </div>
+                                <div class="flex flex-col md:flex-row items-center gap-8 md:gap-12 relative z-10">
+                                    <div class="w-full md:w-3/5 ${isEven ? 'md:order-1' : 'md:order-2'} relative">
+                                        <div class="glow-blob top-0 left-0" style="background: radial-gradient(circle, rgba(212,175,55,0.02) 0%, rgba(0,0,0,0) 60%);"></div>
+                                        <div class="img-container relative w-full h-[250px] md:h-[400px] rounded-3xl bg-surface-300 overflow-hidden border border-white/5 shadow-xl relative z-0"${pic.lqip ? ` style="background-image:url('${pic.lqip}')"` : ''}>
+                                            <div class="absolute inset-0 bg-gold/10 mix-blend-color group-hover:opacity-0 transition-opacity duration-500 z-10 pointer-events-none"></div>
+                                            <div class="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors duration-500 z-10 pointer-events-none"></div>
+                                            <img src="${imgUrl}" srcset="${imgSet}" sizes="(min-width: 768px) 640px, 92vw" data-origin="${imgOrigin}" data-full="${pic.full}" data-title="${(p.title || '').replace(/"/g, '&quot;')}" data-year="${p.year || ''}" data-placeholder="https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=1000&auto=format&fit=crop" ${index === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" onerror="imgFallback(this)" class="img-fade w-full h-full object-cover relative z-0 cursor-zoom-in filter sepia-[0.3] grayscale-[0.5] contrast-[1.2] group-hover:sepia-0 group-hover:grayscale-0 group-hover:contrast-100 transition-all duration-700" alt="${(p.title || 'Project').replace(/"/g, '&quot;')}">
+                                        </div>
+                                    </div>
+                                    <div class="w-full md:w-2/5 flex flex-col justify-center ${isEven ? 'md:order-2' : 'md:order-1'} relative z-10">
+                                        <div class="flex items-center gap-4 mb-4">
+                                            <span class="text-gold font-mono text-sm tracking-widest">${p.year}</span>
+                                            <span class="h-[1px] w-12 bg-white/20"></span>
+                                            <span class="text-neutral-500 text-xs uppercase tracking-widest">${p.category}</span>
+                                        </div>
+                                        <h4 class="text-3xl md:text-4xl font-bold text-white mb-6 group-hover:text-gold transition-colors duration-300">${p.title}</h4>
+                                        <p class="text-neutral-400 text-base leading-relaxed mb-8">${p.description || 'No description provided.'}</p>
+                                        <div>
+                                            <a href="${p.video_url || '#'}" target="_blank" class="inline-flex items-center text-xs font-mono uppercase tracking-widest text-white border border-white/20 hover:border-gold hover:text-gold px-6 py-3 transition-all duration-300 rounded-full">
+                                                View Project <svg class="w-4 h-4 ml-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>`;
+                    });
+                    container.innerHTML = html;
+                }
+                container.style.opacity = '1';
+                initImageFade(container);
+                initScrollReveal();
+            };
+            if (isFirstPaint) draw(); else setTimeout(draw, 300);
+        }
+
+        // ── รูปโหลดเสร็จแล้วค่อย fade ทับภาพเบลอ ──
+        function initImageFade(root) {
+            (root || document).querySelectorAll('img.img-fade').forEach(function (img) {
+                if (img.complete && img.naturalWidth > 0) { img.classList.add('is-loaded'); return; }
+                img.addEventListener('load', function () { img.classList.add('is-loaded'); }, { once: true });
+                // ถ้ารูปพัง ก็ต้องโชว์อยู่ดี ไม่งั้นจะค้างที่ opacity 0
+                img.addEventListener('error', function () { img.classList.add('is-loaded'); }, { once: true });
+            });
+        }
+
+        // ── Lightbox ──────────────────────────────────────────
+        const lb = {
+            el: null, img: null, cap: null,
+            items: [],      // รูปในแท็บที่กำลังเปิดอยู่
+            index: 0,
+
+            init: function () {
+                this.el  = document.getElementById('lightbox');
+                this.img = document.getElementById('lb-img');
+                this.cap = document.getElementById('lb-caption');
+                if (!this.el) return;
+
+                document.getElementById('lb-close').onclick = () => this.close();
+                document.getElementById('lb-prev').onclick  = (e) => { e.stopPropagation(); this.step(-1); };
+                document.getElementById('lb-next').onclick  = (e) => { e.stopPropagation(); this.step(1); };
+                // คลิกพื้นหลัง (ไม่ใช่ตัวรูป) เพื่อปิด
+                this.el.onclick = (e) => { if (e.target === this.el || e.target === this.img) this.close(); };
+
+                document.addEventListener('keydown', (e) => {
+                    if (!this.el.classList.contains('open')) return;
+                    if (e.key === 'Escape')     this.close();
+                    if (e.key === 'ArrowLeft')  this.step(-1);
+                    if (e.key === 'ArrowRight') this.step(1);
+                });
+
+                // มอบหมาย event ไว้ที่ container จะได้ไม่ต้องผูกใหม่ทุกครั้งที่ re-render
+                const container = document.getElementById('timeline-container');
+                if (container) {
+                    container.addEventListener('click', (e) => {
+                        const img = e.target.closest('img[data-full]');
+                        if (img) this.openFrom(img);
+                    });
+                }
+            },
+
+            openFrom: function (img) {
+                this.items = [...document.querySelectorAll('#timeline-container img[data-full]')];
+                this.index = Math.max(0, this.items.indexOf(img));
+                this.render();
+                this.el.classList.add('open');
+                document.body.style.overflow = 'hidden';
+            },
+
+            step: function (dir) {
+                if (this.items.length < 2) return;
+                this.index = (this.index + dir + this.items.length) % this.items.length;
+                this.render();
+            },
+
+            render: function () {
+                const src = this.items[this.index];
+                if (!src) return;
+                this.img.src = src.dataset.full || src.currentSrc || src.src;
+                this.img.alt = src.dataset.title || '';
+                this.cap.innerHTML = '<b>' + (src.dataset.title || '') + '</b>'
+                    + (src.dataset.year ? ' &nbsp;·&nbsp; ' + src.dataset.year : '')
+                    + (this.items.length > 1 ? ' &nbsp;·&nbsp; ' + (this.index + 1) + '/' + this.items.length : '');
+                const multi = this.items.length > 1;
+                document.getElementById('lb-prev').style.display = multi ? 'flex' : 'none';
+                document.getElementById('lb-next').style.display = multi ? 'flex' : 'none';
+            },
+
+            close: function () {
+                this.el.classList.remove('open');
+                this.img.removeAttribute('src');
+                document.body.style.overflow = '';
+            }
+        };
+
+        // ── พิมพ์ / บันทึกเป็น PDF ─────────────────────────────
+        // ปกติหน้าเว็บโชว์ผลงานทีละแท็บ แต่บนกระดาษควรได้ครบทุกหมวด
+        let printRestore = null;
+
+        function expandForPrint() {
+            const container = document.getElementById('timeline-container');
+            if (!container || printRestore) return;
+            printRestore = { html: container.innerHTML };
+
+            const cats = [...new Set(globalPortfolioData.map(p => p.category))];
+            container.innerHTML = '';
+            cats.forEach(function (cat) {
+                const head = document.createElement('h4');
+                head.className = 'text-2xl font-bold text-white mb-6 mt-10';
+                head.innerText = cat;
+                container.appendChild(head);
+                const holder = document.createElement('div');
+                container.appendChild(holder);
+                renderPortfolioShowcase(cat, holder);
+            });
+
+            // typewriter อาจยังพิมพ์ไม่จบ กระดาษจะได้ตำแหน่งงานขาดครึ่ง
+            const posEl = document.getElementById('position');
+            if (posEl && window.__position) {
+                typeGen++;                         // หยุด typewriter ที่ยังวิ่งอยู่
+                posEl.innerText = window.__position;
+            }
+
+            // lazy image ไม่โหลดตอนสั่งพิมพ์ ต้องบังคับให้โหลดเองไม่งั้น PDF ได้แต่ภาพเบลอ
+            forcePrintImages();
+        }
+
+        function forcePrintImages() {
+            document.querySelectorAll('#timeline-container img, #profile-pic').forEach(function (img) {
+                img.loading = 'eager';
+                img.classList.add('is-loaded');
+                // ใช้ไฟล์ความละเอียดสูงสุดไปเลย กระดาษ 300dpi กินรายละเอียดมากกว่าจอ
+                if (img.dataset.full && img.src !== img.dataset.full) {
+                    img.removeAttribute('srcset');
+                    img.removeAttribute('sizes');
+                    img.src = img.dataset.full;
+                }
+            });
+        }
+
+        function waitForImages(timeoutMs) {
+            const imgs = [...document.querySelectorAll('#timeline-container img, #profile-pic')]
+                .filter(function (i) { return !(i.complete && i.naturalWidth > 0); });
+            if (!imgs.length) return Promise.resolve(0);
+            return Promise.race([
+                Promise.all(imgs.map(function (i) {
+                    return new Promise(function (res) {
+                        i.addEventListener('load', res, { once: true });
+                        i.addEventListener('error', res, { once: true });
+                    });
+                })).then(function () { return imgs.length; }),
+                new Promise(function (res) { setTimeout(function () { res(-1); }, timeoutMs || 8000); })
+            ]);
+        }
+
+        function restoreAfterPrint() {
+            if (!printRestore) return;
+            const container = document.getElementById('timeline-container');
+            container.innerHTML = printRestore.html;
+            initImageFade(container);
+            printRestore = null;
+        }
+
+        // กด Ctrl+P เองก็ยังได้ผลถูกต้อง (แต่รูปอาจยังโหลดไม่ครบ ปุ่ม Save PDF จะรอให้)
+        window.addEventListener('beforeprint', expandForPrint);
+        window.addEventListener('afterprint', restoreAfterPrint);
+
+        const PRINT_HINT_KEY = 'webcv-print-hint-off';
+
+        function askPrintHint() {
+            // เคยกด "ไม่ต้องเตือนอีก" แล้วก็ข้ามไปเลย
+            try { if (localStorage.getItem(PRINT_HINT_KEY) === '1') return Promise.resolve(true); } catch (e) {}
+            const box = document.getElementById('print-hint');
+            if (!box) return Promise.resolve(true);
+
+            box.classList.remove('hidden');
+            box.classList.add('flex');
+            return new Promise(function (resolve) {
+                function done(ok) {
+                    if (ok && document.getElementById('print-hint-off').checked) {
+                        try { localStorage.setItem(PRINT_HINT_KEY, '1'); } catch (e) {}
+                    }
+                    box.classList.add('hidden');
+                    box.classList.remove('flex');
+                    resolve(ok);
+                }
+                document.getElementById('print-hint-go').onclick     = function () { done(true); };
+                document.getElementById('print-hint-cancel').onclick = function () { done(false); };
+                box.onclick = function (e) { if (e.target === box) done(false); };
+            });
+        }
+
+        async function printCV(btn) {
+            if (!(await askPrintHint())) return;
+
+            const label = btn ? btn.innerHTML : null;
+            if (btn) { btn.disabled = true; btn.innerHTML = 'กำลังเตรียม...'; }
+            try {
+                expandForPrint();
+                await new Promise(function (r) { requestAnimationFrame(r); });
+                const n = await waitForImages(10000);
+                if (n === -1) console.warn('บางรูปโหลดไม่ทันภายใน 10 วิ พิมพ์ต่อเลย');
+                window.print();
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = label; }
+                // เบราว์เซอร์บางตัวไม่ยิง afterprint ตั้งเวลาเก็บกวาดไว้ด้วย
+                setTimeout(restoreAfterPrint, 1000);
+            }
+        }
+
+        function initScrollReveal() {
+            const reveals = document.querySelectorAll('.reveal');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('active'); });
+            }, { threshold: 0.1 });
+            reveals.forEach(reveal => observer.observe(reveal));
+        }
+
+        function initMobileMenu() {
+            const btn  = document.getElementById('nav-toggle');
+            const menu = document.getElementById('mobile-menu');
+            if (!btn || !menu) return;
+
+            function setOpen(open) {
+                menu.classList.toggle('open', open);
+                menu.classList.toggle('hidden', !open);
+                btn.classList.toggle('open', open);
+                btn.setAttribute('aria-expanded', String(open));
+                btn.setAttribute('aria-label', open ? 'ปิดเมนู' : 'เปิดเมนู');
+                document.body.style.overflow = open ? 'hidden' : '';
+            }
+
+            btn.addEventListener('click', function () { setOpen(!menu.classList.contains('open')); });
+            // แตะลิงก์แล้วต้องปิดเมนูเอง ไม่งั้นมันบังหน้าที่เพิ่งเลื่อนไป
+            menu.querySelectorAll('a').forEach(function (a) {
+                a.addEventListener('click', function () { setOpen(false); });
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && menu.classList.contains('open')) setOpen(false);
+            });
+            // หมุนจอเป็นแนวนอนจนเข้าโหมด desktop แล้วเมนูค้างอยู่ ต้องปิดให้
+            window.addEventListener('resize', function () {
+                if (innerWidth >= 768 && menu.classList.contains('open')) setOpen(false);
+            });
+        }
+
+        function boot() {
+            lb.init();
+            initMobileMenu();
+            const printBtn = document.getElementById('print-cv');
+            if (printBtn) printBtn.onclick = function () { printCV(printBtn); };
+            initWebCV();
+        }
+
+        // เดิมเป็น window.onload = ต้องรอทุก asset เสร็จก่อนถึงจะเริ่มวาด
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', boot, { once: true });
+        } else {
+            boot();
+        }
+    </script>
+</body>
+</html>

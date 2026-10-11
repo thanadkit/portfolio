@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <!-- ไล่เฉดทองชุดเดียวกับ gold.light / gold / gold.dark ในธีมของเว็บ -->
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#fde047"/>
+      <stop offset="52%"  stop-color="#d4af37"/>
+      <stop offset="100%" stop-color="#a37f12"/>
+    </linearGradient>
+  </defs>
+
+  <!-- พื้นหลัง surface.100 มุมโค้งรับกับการ์ดในหน้าเว็บ -->
+  <rect width="64" height="64" rx="14" fill="#111111"/>
+  <rect x="1" y="1" width="62" height="62" rx="13"
+        fill="none" stroke="#d4af37" stroke-opacity="0.5" stroke-width="2"/>
+
+  <!-- โมโนแกรม TL เส้นหนาพอให้อ่านออกที่ 16px -->
+  <g fill="url(#gold)">
+    <!-- T -->
+    <rect x="9"  y="17" width="23" height="9" rx="2"/>
+    <rect x="16" y="17" width="9"  height="30" rx="2"/>
+    <!-- L -->
+    <rect x="34" y="17" width="9"  height="30" rx="2"/>
+    <rect x="34" y="38" width="18" height="9"  rx="2"/>
+  </g>
+
+  <!-- จุดทอง เหมือน "TL." บน navbar -->
+  <circle cx="52" cy="22" r="4" fill="#fde047"/>
+</svg>

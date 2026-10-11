@@ -1,0 +1,22 @@
+# ชื่อไฟล์รูปมี hash ของเนื้อไฟล์อยู่ด้วย เนื้อหาเปลี่ยนเมื่อไหร่ชื่อเปลี่ยนตาม
+# จึงแคชยาวแบบ immutable ได้โดยไม่ต้องกลัวค้างรูปเก่า
+/media/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# ไฟล์พวกนี้ชื่อคงเดิมแต่เนื้อหาเปลี่ยนได้ทุก deploy ต้องให้ถามก่อนใช้เสมอ
+/
+  Cache-Control: no-cache, must-revalidate
+/index.html
+  Cache-Control: no-cache, must-revalidate
+/tailwind.css
+  Cache-Control: no-cache, must-revalidate
+
+/og-image.png
+  Cache-Control: public, max-age=3600
+
+# ข้อมูลฝังมาใน HTML แล้ว สองอันนี้เหลือไว้เป็นทางถอยเฉย ๆ
+/api/cv
+  Content-Type: application/json; charset=utf-8
+  Cache-Control: no-cache
+/cv.json
+  Cache-Control: no-cache

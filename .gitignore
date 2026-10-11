@@ -1,0 +1,5 @@
+# สร้างใหม่ทุก build ไม่ต้องเก็บใน git
+data/
+dist/
+.DS_Store
+node_modules/
