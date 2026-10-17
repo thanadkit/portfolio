@@ -1,70 +1,100 @@
 /**
- * ตัวสั่ง deploy เว็บอัตโนมัติเมื่อแก้ Google Sheet
+ * สั่งให้เว็บบน Cloudflare Pages อัปเดตอัตโนมัติเมื่อข้อมูลใน Sheet เปลี่ยน
  * เอาไปวางต่อท้ายโค้ดเดิมในหน้า Apps Script Editor
  *
- * ── ติดตั้งครั้งเดียว ───────────────────────────────────────
- * 1. Cloudflare Pages -> Settings -> Builds & deployments -> Deploy hooks
- *    สร้าง hook ใหม่ แล้วก๊อป URL มา
- * 2. กลับมาที่ Apps Script เลือกฟังก์ชัน setDeployHook แล้วกด Run
- *    (แก้ URL ในฟังก์ชันให้เป็นของคุณก่อน)
- * 3. เมนู Triggers (รูปนาฬิกา) ทางซ้าย -> Add Trigger สองอัน:
- *      a) onSheetChanged  | From spreadsheet | On change
- *      b) flushDeploy     | Time-driven      | Minutes timer | Every 10 minutes
+ * ── หลักการ ─────────────────────────────────────────────────
+ * Cloudflare Pages ฟรีให้ build เดือนละ 500 ครั้ง
+ * ถ้าสั่ง deploy ทุกชั่วโมงจะเป็น 720 ครั้ง/เดือน — เกินโควตา
+ * และส่วนใหญ่ก็ build ทิ้งเปล่าเพราะข้อมูลไม่ได้เปลี่ยน
  *
- * ทำไมต้องสองอัน: การพิมพ์ใน Sheet ยิง event รัวมาก ถ้า deploy ทุก event
- * จะเปลือง build quota ฟรี (500 ครั้ง/เดือน) ตัวแรกแค่ปักธงว่า "มีของใหม่"
- * ตัวที่สองมาเก็บกวาดทีหลังเมื่อหยุดพิมพ์แล้ว รวบการแก้ทั้งรอบเป็น deploy ครั้งเดียว
+ * ตัวนี้จึงแยกสองเรื่องออกจากกัน:
+ *   เช็กว่าข้อมูลเปลี่ยนไหม  -> ทุก 15 นาที (ฟรี ไม่กินโควตา Cloudflare)
+ *   สั่ง build                -> เฉพาะตอนข้อมูลต่างจากเดิมจริง
+ * เท่ากับจำนวน build ต่อเดือน = จำนวนครั้งที่แก้ Sheet จริง ๆ
+ *
+ * ── ติดตั้งครั้งเดียว ───────────────────────────────────────
+ * 1. แก้ DEPLOY_HOOK ด้านล่างให้เป็น URL จริง
+ *    (อยู่ในไฟล์ DEPLOY_HOOK.local.txt ในโฟลเดอร์โปรเจกต์)
+ * 2. เลือกฟังก์ชัน initDeploy แล้วกด Run หนึ่งครั้ง
+ * 3. เมนู Triggers (รูปนาฬิกา) -> Add Trigger
+ *      Function        : checkAndDeploy
+ *      Event source    : Time-driven
+ *      Type            : Minutes timer
+ *      Interval        : Every 15 minutes
+ *    ตัวเดียวพอ ไม่ต้องตั้ง onChange
  */
 
-const PROP_HOOK    = 'CF_DEPLOY_HOOK';
-const PROP_PENDING = 'DEPLOY_PENDING_AT';
-const QUIET_MINUTES = 5;    // หยุดแก้นานเท่านี้ถึงจะ deploy
+const DEPLOY_HOOK = 'PASTE_DEPLOY_HOOK_URL_HERE';
 
-function setDeployHook() {
-  // อย่า commit URL จริงลง git — repo นี้เป็น public ใครยิง URL นี้ก็สั่ง build ได้
-  // เอา URL จาก Cloudflare -> Settings -> Builds & deployments -> Deploy hooks มาวางตรงนี้
-  // รัน setDeployHook หนึ่งครั้งเพื่อเก็บลง Script Properties แล้วค่อยลบ URL ออกจากบรรทัดนี้ได้
-  const url = 'PASTE_DEPLOY_HOOK_URL_HERE';
-  if (url.indexOf('PASTE_') === 0) {
-    throw new Error('ยังไม่ได้ใส่ Deploy Hook URL จริง');
+const PROP_HOOK = 'CF_DEPLOY_HOOK';
+const PROP_SIG  = 'DATA_SIGNATURE';
+// ชีตที่มีผลต่อหน้าเว็บ ถ้าเพิ่มชีตใหม่ต้องใส่ชื่อตรงนี้ด้วย
+const WATCHED_SHEETS = ['profile', 'experience', 'skills', 'services', 'portfolio'];
+
+
+/** รันครั้งเดียวตอนติดตั้ง: เก็บ hook แล้วจำสภาพข้อมูลปัจจุบันไว้ */
+function initDeploy() {
+  if (DEPLOY_HOOK.indexOf('PASTE_') === 0) {
+    throw new Error('ยังไม่ได้ใส่ Deploy Hook URL จริงในตัวแปร DEPLOY_HOOK');
   }
-  PropertiesService.getScriptProperties().setProperty(PROP_HOOK, url);
-  Logger.log('เก็บ Deploy Hook เรียบร้อย');
-}
-
-/** ติดตั้งเป็น trigger แบบ "From spreadsheet -> On change" */
-function onSheetChanged(e) {
-  // ปักธงไว้เฉย ๆ ยังไม่ deploy เพราะการแก้หนึ่งรอบยิง event มาหลายครั้ง
-  PropertiesService.getScriptProperties()
-    .setProperty(PROP_PENDING, String(Date.now()));
-}
-
-/** ติดตั้งเป็น trigger แบบ "Time-driven -> Every 10 minutes" */
-function flushDeploy() {
   const props = PropertiesService.getScriptProperties();
-  const pendingAt = Number(props.getProperty(PROP_PENDING) || 0);
-  if (!pendingAt) return;                                   // ไม่มีอะไรเปลี่ยน
-
-  const quietMs = Date.now() - pendingAt;
-  if (quietMs < QUIET_MINUTES * 60 * 1000) return;          // ยังแก้อยู่ รอก่อน
-
-  props.deleteProperty(PROP_PENDING);
-  triggerDeploy('มีการแก้ข้อมูลใน Sheet');
+  props.setProperty(PROP_HOOK, DEPLOY_HOOK);
+  // จำสภาพปัจจุบันไว้ก่อน จะได้ไม่ deploy รอบแรกทั้งที่เว็บยังตรงอยู่แล้ว
+  props.setProperty(PROP_SIG, currentSignature());
+  Logger.log('ติดตั้งเรียบร้อย — ตั้ง trigger checkAndDeploy แบบ Every 15 minutes ต่อได้เลย');
 }
+
+
+/** ติดตั้งเป็น trigger แบบ Time-driven -> Every 15 minutes */
+function checkAndDeploy() {
+  const props = PropertiesService.getScriptProperties();
+  const now = currentSignature();
+  const before = props.getProperty(PROP_SIG);
+
+  if (now === before) return;           // ข้อมูลเหมือนเดิม ไม่ต้องทำอะไร
+
+  props.setProperty(PROP_SIG, now);     // เก็บก่อนยิง กัน deploy ซ้ำถ้า hook ล้ม
+  triggerDeploy('ข้อมูลใน Sheet เปลี่ยน');
+}
+
+
+/**
+ * ย่อข้อมูลทุกชีตที่เกี่ยวข้องให้เหลือ hash สั้น ๆ
+ * อ่านจาก Sheet ตรง ๆ ไม่ผ่าน API จึงเร็วและไม่โดนแคชของ Apps Script หลอก
+ */
+function currentSignature() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const parts = [];
+
+  WATCHED_SHEETS.forEach(function (name) {
+    const sh = ss.getSheetByName(name);
+    if (!sh) { parts.push(name + ':ไม่มีชีต'); return; }
+    const lastRow = sh.getLastRow();
+    const lastCol = sh.getLastColumn();
+    if (lastRow < 1 || lastCol < 1) { parts.push(name + ':ว่าง'); return; }
+    parts.push(name + ':' + sh.getRange(1, 1, lastRow, lastCol).getValues().join('\u0001'));
+  });
+
+  const raw = parts.join('\u0002');
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw, Utilities.Charset.UTF_8);
+  return digest.map(function (b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); }).join('');
+}
+
 
 /** เรียกเองได้จากเมนู เผื่อเปลี่ยนรูปที่ postimg โดยไม่ได้แตะ Sheet */
 function deployNow() {
-  PropertiesService.getScriptProperties().deleteProperty(PROP_PENDING);
   const ok = triggerDeploy('สั่งเองจากเมนู');
+  PropertiesService.getScriptProperties().setProperty(PROP_SIG, currentSignature());
   SpreadsheetApp.getActive().toast(
-    ok ? 'สั่ง deploy แล้ว อีกประมาณ 2 นาทีเว็บจะอัปเดต' : 'สั่ง deploy ไม่สำเร็จ ดู Executions',
+    ok ? 'สั่ง deploy แล้ว อีกประมาณ 3 นาทีเว็บจะอัปเดต' : 'สั่งไม่สำเร็จ ดูที่ Executions',
     'Portfolio', 5);
 }
+
 
 function triggerDeploy(reason) {
   const hook = PropertiesService.getScriptProperties().getProperty(PROP_HOOK);
   if (!hook) {
-    Logger.log('ยังไม่ได้ตั้ง Deploy Hook — รันฟังก์ชัน setDeployHook ก่อน');
+    Logger.log('ยังไม่ได้ตั้ง Deploy Hook — รันฟังก์ชัน initDeploy ก่อน');
     return false;
   }
 
@@ -79,13 +109,16 @@ function triggerDeploy(reason) {
       muteHttpExceptions: true
     });
     const code = res.getResponseCode();
-    Logger.log('deploy (' + reason + ') -> HTTP ' + code);
-    return code >= 200 && code < 300;
+    // 200 = รับคิวแล้ว, 304 = มี build คิวอยู่แล้วเลยไม่สั่งซ้ำ (ถือว่าสำเร็จทั้งคู่)
+    const ok = (code >= 200 && code < 300) || code === 304;
+    Logger.log('deploy (' + reason + ') -> HTTP ' + code + (ok ? ' สำเร็จ' : ' ล้มเหลว'));
+    return ok;
   } catch (err) {
     Logger.log('deploy ไม่สำเร็จ: ' + err);
     return false;
   }
 }
+
 
 /** เมนูในแถบเครื่องมือของ Sheet */
 function onOpen() {
@@ -93,18 +126,19 @@ function onOpen() {
     .createMenu('Portfolio')
     .addItem('Deploy เว็บตอนนี้', 'deployNow')
     .addSeparator()
-    .addItem('ดูสถานะการตั้งค่า', 'showDeployStatus')
+    .addItem('ดูสถานะ', 'showDeployStatus')
     .addToUi();
 }
 
+
 function showDeployStatus() {
   const props = PropertiesService.getScriptProperties();
-  const hook = props.getProperty(PROP_HOOK);
-  const pendingAt = Number(props.getProperty(PROP_PENDING) || 0);
+  const hasHook = !!props.getProperty(PROP_HOOK);
+  const same = props.getProperty(PROP_SIG) === currentSignature();
   SpreadsheetApp.getUi().alert(
     'Portfolio – สถานะ',
-    'Deploy Hook: ' + (hook ? 'ตั้งแล้ว' : 'ยังไม่ได้ตั้ง (รัน setDeployHook)') + '\n' +
-    'รอ deploy อยู่: ' + (pendingAt ? new Date(pendingAt).toLocaleString('th-TH') : 'ไม่มี') + '\n' +
-    'หน่วงก่อน deploy: ' + QUIET_MINUTES + ' นาทีหลังหยุดแก้',
+    'Deploy Hook : ' + (hasHook ? 'ตั้งแล้ว' : 'ยังไม่ได้ตั้ง (รัน initDeploy)') + '\n' +
+    'ข้อมูลตอนนี้ : ' + (same ? 'ตรงกับที่เว็บเสิร์ฟอยู่' : 'เปลี่ยนแล้ว รอ trigger รอบถัดไป') + '\n\n' +
+    'ตัวเช็กทำงานทุก 15 นาที และจะสั่ง build ก็ต่อเมื่อข้อมูลเปลี่ยนจริง',
     SpreadsheetApp.getUi().ButtonSet.OK);
 }
