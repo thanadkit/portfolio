@@ -1,27 +1,23 @@
 /**
- * สั่งให้เว็บบน Cloudflare Pages อัปเดตอัตโนมัติเมื่อข้อมูลใน Sheet เปลี่ยน
+ * สั่งให้เว็บบน Cloudflare Pages อัปเดตวันละ 2 รอบ (06:00 และ 18:00)
  * เอาไปวางต่อท้ายโค้ดเดิมในหน้า Apps Script Editor
  *
  * ── หลักการ ─────────────────────────────────────────────────
  * Cloudflare Pages ฟรีให้ build เดือนละ 500 ครั้ง
- * ถ้าสั่ง deploy ทุกชั่วโมงจะเป็น 720 ครั้ง/เดือน — เกินโควตา
- * และส่วนใหญ่ก็ build ทิ้งเปล่าเพราะข้อมูลไม่ได้เปลี่ยน
+ * ตัวนี้เช็ก 2 ครั้ง/วัน (06:00, 18:00) = สูงสุด 62 build/เดือน ห่างจากโควตามาก
+ * และยัง "เช็กก่อนสั่ง" ด้วย hash ข้อมูล — ถ้าช่วงนั้นไม่มีใครแก้ Sheet เลย
+ * ก็จะไม่สั่ง build ทิ้งเปล่า ๆ
  *
- * ตัวนี้จึงแยกสองเรื่องออกจากกัน:
- *   เช็กว่าข้อมูลเปลี่ยนไหม  -> ทุก 15 นาที (ฟรี ไม่กินโควตา Cloudflare)
- *   สั่ง build                -> เฉพาะตอนข้อมูลต่างจากเดิมจริง
- * เท่ากับจำนวน build ต่อเดือน = จำนวนครั้งที่แก้ Sheet จริง ๆ
+ * ข้อแลกเปลี่ยน: ข้อมูลสดช้าสุด 12 ชม. (แก้เที่ยงวัน จะขึ้นเว็บตอน 18:00)
  *
  * ── ติดตั้งครั้งเดียว ───────────────────────────────────────
  * 1. แก้ DEPLOY_HOOK ด้านล่างให้เป็น URL จริง
  *    (อยู่ในไฟล์ DEPLOY_HOOK.local.txt ในโฟลเดอร์โปรเจกต์)
  * 2. เลือกฟังก์ชัน initDeploy แล้วกด Run หนึ่งครั้ง
- * 3. เมนู Triggers (รูปนาฬิกา) -> Add Trigger
- *      Function        : checkAndDeploy
- *      Event source    : Time-driven
- *      Type            : Minutes timer
- *      Interval        : Every 15 minutes
- *    ตัวเดียวพอ ไม่ต้องตั้ง onChange
+ * 3. เมนู Triggers (รูปนาฬิกา) -> Add Trigger สองครั้ง:
+ *      Function : checkAndDeploy | Time-driven | Day timer | 6am to 7am
+ *      Function : checkAndDeploy | Time-driven | Day timer | 6pm to 7pm
+ *    (Apps Script ให้เลือกเป็นช่วงชั่วโมง ไม่ใช่เวลาตายตัว จะรันสักจุดในช่วงนั้น)
  */
 
 const DEPLOY_HOOK = 'PASTE_DEPLOY_HOOK_URL_HERE';
@@ -41,11 +37,11 @@ function initDeploy() {
   props.setProperty(PROP_HOOK, DEPLOY_HOOK);
   // จำสภาพปัจจุบันไว้ก่อน จะได้ไม่ deploy รอบแรกทั้งที่เว็บยังตรงอยู่แล้ว
   props.setProperty(PROP_SIG, currentSignature());
-  Logger.log('ติดตั้งเรียบร้อย — ตั้ง trigger checkAndDeploy แบบ Every 15 minutes ต่อได้เลย');
+  Logger.log('ติดตั้งเรียบร้อย — ตั้ง trigger checkAndDeploy สองตัว (06:00 และ 18:00) ต่อได้เลย');
 }
 
 
-/** ติดตั้งเป็น trigger แบบ Time-driven -> Every 15 minutes */
+/** ติดตั้งเป็น trigger แบบ Time-driven -> Day timer ที่ 06:00 และ 18:00 */
 function checkAndDeploy() {
   const props = PropertiesService.getScriptProperties();
   const now = currentSignature();
@@ -54,7 +50,7 @@ function checkAndDeploy() {
   if (now === before) return;           // ข้อมูลเหมือนเดิม ไม่ต้องทำอะไร
 
   props.setProperty(PROP_SIG, now);     // เก็บก่อนยิง กัน deploy ซ้ำถ้า hook ล้ม
-  triggerDeploy('ข้อมูลใน Sheet เปลี่ยน');
+  triggerDeploy('ข้อมูลใน Sheet เปลี่ยน (เช็กรอบ ' + new Date().toLocaleString('th-TH') + ')');
 }
 
 
@@ -81,7 +77,7 @@ function currentSignature() {
 }
 
 
-/** เรียกเองได้จากเมนู เผื่อเปลี่ยนรูปที่ postimg โดยไม่ได้แตะ Sheet */
+/** เรียกเองได้จากเมนู เผื่ออยากให้ขึ้นทันทีไม่ต้องรอรอบ 06:00/18:00 */
 function deployNow() {
   const ok = triggerDeploy('สั่งเองจากเมนู');
   PropertiesService.getScriptProperties().setProperty(PROP_SIG, currentSignature());
@@ -138,7 +134,7 @@ function showDeployStatus() {
   SpreadsheetApp.getUi().alert(
     'Portfolio – สถานะ',
     'Deploy Hook : ' + (hasHook ? 'ตั้งแล้ว' : 'ยังไม่ได้ตั้ง (รัน initDeploy)') + '\n' +
-    'ข้อมูลตอนนี้ : ' + (same ? 'ตรงกับที่เว็บเสิร์ฟอยู่' : 'เปลี่ยนแล้ว รอ trigger รอบถัดไป') + '\n\n' +
-    'ตัวเช็กทำงานทุก 15 นาที และจะสั่ง build ก็ต่อเมื่อข้อมูลเปลี่ยนจริง',
+    'ข้อมูลตอนนี้ : ' + (same ? 'ตรงกับที่เว็บเสิร์ฟอยู่' : 'เปลี่ยนแล้ว รอรอบ 06:00/18:00 หรือกด Deploy เว็บตอนนี้') + '\n\n' +
+    'เช็กและ deploy วันละ 2 รอบ (06:00, 18:00) — อยากให้ขึ้นเร็วกว่านั้นใช้เมนู Deploy เว็บตอนนี้',
     SpreadsheetApp.getUi().ButtonSet.OK);
 }
